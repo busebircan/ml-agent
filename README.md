@@ -126,7 +126,7 @@ Models tracked:
 ## Roadmap
 
 - [x] Phase 0 — Fork, setup, local Ollama configuration
-- [ ] Phase 1 — System prompt code quality contract
+- [x] Phase 1 — System prompt code quality contract
 - [ ] Phase 2 — Domain example scripts
 - [ ] Phase 3 — Ruff + mypy linting pass
 - [ ] Phase 4 — GCP Vertex AI tool
