@@ -62,6 +62,13 @@ system_prompt: |
 
   Before returning any generated script, verify it meets all five requirements. If you find a violation, fix it before responding.
 
+  Reference implementations (match their style and structure exactly):
+    CV:           examples/cv_classification.py
+    Tabular:      examples/tabular_classification.py
+    Time-series:  examples/timeseries_forecasting.py
+    NLP:          examples/nlp_classification.py
+    RL:           examples/rl_training.py
+
   # When writing ML code
 
   Required sequence before any training/fine-tuning/inference script:
