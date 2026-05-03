@@ -20,10 +20,10 @@ Built on top of [huggingface/ml-intern](https://github.com/huggingface/ml-intern
 
 | Layer | What | Cost |
 |---|---|---|
-| Agent brain | Qwen2.5-Coder 32B via Ollama (Mac Mini M4 Pro) | Free |
+| Agent brain | Qwen2.5-Coder 32B via Ollama | Free |
 | Research | HF Papers, HF Docs, GitHub search | Free |
 | Training compute | GCP Vertex AI / Kaggle | Pay per use / Free tier |
-| Agent orchestration | Mac Mini M4 Pro | Free |
+| Agent orchestration | Laptop (upgrade path: Mac Mini M4 Pro) | Free |
 
 ---
 
