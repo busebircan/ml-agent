@@ -125,7 +125,7 @@ Models tracked:
 
 ## Roadmap
 
-- [x] Phase 0 — Fork, setup, Groq configuration
+- [x] Phase 0 — Fork, setup, local Ollama configuration
 - [ ] Phase 1 — System prompt code quality contract
 - [ ] Phase 2 — Domain example scripts
 - [ ] Phase 3 — Ruff + mypy linting pass
