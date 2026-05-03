@@ -20,10 +20,10 @@ Built on top of [huggingface/ml-intern](https://github.com/huggingface/ml-intern
 
 | Layer | What | Cost |
 |---|---|---|
-| Agent brain | Groq (Llama 3.3 70b / Qwen2.5 72b) | Free tier |
+| Agent brain | Qwen2.5-Coder 32B via Ollama (Mac Mini M4 Pro) | Free |
 | Research | HF Papers, HF Docs, GitHub search | Free |
 | Training compute | GCP Vertex AI / Kaggle | Pay per use / Free tier |
-| Agent orchestration | Runs on laptop | Free |
+| Agent orchestration | Mac Mini M4 Pro | Free |
 
 ---
 
@@ -85,9 +85,14 @@ uv tool install -e .
 Create a `.env` file in the project root:
 
 ```bash
-GROQ_API_KEY=<your-groq-api-key>       # free at console.groq.com
 HF_TOKEN=<your-hugging-face-token>     # free at huggingface.co/settings/tokens
 GITHUB_TOKEN=<your-github-token>       # for GitHub code search tool
+```
+
+Install and start Ollama, then pull the model:
+
+```bash
+ollama pull qwen2.5-coder:32b
 ```
 
 Run:
@@ -103,16 +108,16 @@ ml-intern
 All LLM calls go through `litellm` — swap the model with one line in `configs/cli_agent_config.json`:
 
 ```json
-{ "model_name": "groq/llama-3.3-70b-versatile" }
+{ "model_name": "ollama/qwen2.5-coder:32b" }
 ```
 
-Models currently tracked:
+Models tracked:
 
 | Model | Provider | Notes |
 |---|---|---|
-| `groq/llama-3.3-70b-versatile` | Groq free | Baseline, good reasoning |
-| `groq/qwen-qwen2.5-72b-instruct` | Groq free | Strong on code and tool calling |
-| `deepseek-ai/DeepSeek-V4-Pro` | HF Router | Strong alternative |
+| `ollama/qwen2.5-coder:32b` | Local (Ollama) | Primary — best coding model at this size, fits 24GB |
+| `ollama/llama3.3:70b` | Local (Ollama) | Larger reasoning, Q2 quant for 24GB |
+| `deepseek-ai/DeepSeek-V4-Pro` | HF Router | Cloud fallback |
 
 ---
 
