@@ -127,7 +127,7 @@ Models tracked:
 
 - [x] Phase 0 — Fork, setup, local Ollama configuration
 - [x] Phase 1 — System prompt code quality contract
-- [ ] Phase 2 — Domain example scripts
+- [x] Phase 2 — Domain example scripts
 - [ ] Phase 3 — Ruff + mypy linting pass
 - [ ] Phase 4 — GCP Vertex AI tool
 - [ ] Phase 5 — Code review sub-agent
