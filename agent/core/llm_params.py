@@ -137,6 +137,22 @@ def _resolve_llm_params(
       3. huggingface_hub cache — ``HF_TOKEN`` / ``HUGGING_FACE_HUB_TOKEN`` /
          local ``hf auth login`` cache.
     """
+    if model_name.startswith("groq/"):
+        params = {"model": model_name}
+        import os
+        api_key = os.environ.get("GROQ_API_KEY")
+        if api_key:
+            params["api_key"] = api_key
+        return params
+
+    if model_name.startswith("gemini/"):
+        params = {"model": model_name}
+        import os
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            params["api_key"] = api_key
+        return params
+
     if model_name.startswith("anthropic/"):
         params: dict = {"model": model_name}
         if reasoning_effort:

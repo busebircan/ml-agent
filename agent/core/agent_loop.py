@@ -859,12 +859,38 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
     )
 
 
+def _sanitize_messages(messages: list, model: str) -> list:
+    """Strip non-standard message fields that some providers reject.
+
+    Groq rejects any extra fields (e.g. 'timestamp') on message objects.
+    Convert each message to a plain dict with only the fields the provider accepts.
+    """
+    if not (model.startswith("groq/") or model.startswith("gemini/")):
+        return messages
+    standard_fields = {"role", "content", "name", "tool_calls", "tool_call_id"}
+    sanitized = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            sanitized.append({k: v for k, v in msg.items() if k in standard_fields})
+        else:
+            # litellm Message object — convert to dict and strip extras
+            msg_dict = {k: v for k, v in vars(msg).items() if k in standard_fields and v is not None}
+            # fallback: use role/content at minimum
+            if "role" not in msg_dict:
+                msg_dict["role"] = getattr(msg, "role", "user")
+            if "content" not in msg_dict:
+                msg_dict["content"] = getattr(msg, "content", "")
+            sanitized.append(msg_dict)
+    return sanitized
+
+
 async def _call_llm_non_streaming(session: Session, messages, tools, llm_params) -> LLMResult:
     """Call the LLM without streaming, emit assistant_message at the end."""
     response = None
     _healed_effort = False
     _healed_thinking_signature = False
     messages, tools = with_prompt_caching(messages, tools, llm_params.get("model"))
+    messages = _sanitize_messages(messages, llm_params.get("model", ""))
     t_start = time.monotonic()
     for _llm_attempt in range(_MAX_LLM_RETRIES):
         try:
