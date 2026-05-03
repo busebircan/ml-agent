@@ -137,6 +137,11 @@ def _resolve_llm_params(
       3. huggingface_hub cache — ``HF_TOKEN`` / ``HUGGING_FACE_HUB_TOKEN`` /
          local ``hf auth login`` cache.
     """
+    if model_name.startswith("ollama/"):
+        # Local Ollama instance — no API key needed.
+        # LiteLLM routes ollama/ to http://localhost:11434 automatically.
+        return {"model": model_name}
+
     if model_name.startswith("groq/"):
         params = {"model": model_name}
         import os

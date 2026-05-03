@@ -20,10 +20,10 @@ Built on top of [huggingface/ml-intern](https://github.com/huggingface/ml-intern
 
 | Layer | What | Cost |
 |---|---|---|
-| Agent brain | Qwen2.5-Coder 32B via Ollama | Free |
+| Agent brain | Qwen2.5-Coder 32B via Ollama (local) | Free |
 | Research | HF Papers, HF Docs, GitHub search | Free |
 | Training compute | GCP Vertex AI / Kaggle | Pay per use / Free tier |
-| Agent orchestration | Laptop (upgrade path: Mac Mini M4 Pro) | Free |
+| Agent orchestration | Windows laptop, 32GB RAM + NVIDIA T550 | Free |
 
 ---
 
@@ -89,7 +89,7 @@ HF_TOKEN=<your-hugging-face-token>     # free at huggingface.co/settings/tokens
 GITHUB_TOKEN=<your-github-token>       # for GitHub code search tool
 ```
 
-Install and start Ollama, then pull the model:
+Install [Ollama](https://ollama.com), then pull the model (~20GB):
 
 ```bash
 ollama pull qwen2.5-coder:32b
@@ -100,6 +100,8 @@ Run:
 ```bash
 ml-intern
 ```
+
+> **Hardware note:** 32GB RAM is the minimum for Qwen2.5-Coder 32B (Q4, ~20GB). A discrete GPU with CUDA support (even 4GB VRAM) will offload layers and speed up inference. Mac Mini M4 Pro (24GB unified RAM + Neural Engine) is the upgrade path for faster local inference.
 
 ---
 
