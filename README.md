@@ -131,7 +131,7 @@ Models tracked:
 - [x] Phase 3 — Ruff + mypy linting pass
 - [x] Phase 4 — GCP Vertex AI tool
 - [x] Phase 5 — Code review sub-agent
-- [ ] Phase 6 — Model evaluation harness
+- [x] Phase 6 — Model evaluation harness
 - [ ] Phase 7 — Domain hardening (CV, tabular, time-series, RL, NLP)
 
 ---
