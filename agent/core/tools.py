@@ -54,6 +54,7 @@ from agent.tools.sandbox_tool import get_sandbox_tools
 from agent.tools.web_search_tool import WEB_SEARCH_TOOL_SPEC, web_search_handler
 from agent.tools.lint_tool import LINT_TOOL_SPEC, lint_handler
 from agent.tools.gcp_vertex_tool import GCP_VERTEX_TOOL_SPEC, gcp_vertex_handler
+from agent.tools.code_review_tool import CODE_REVIEW_TOOL_SPEC, code_review_handler
 
 # NOTE: Private HF repo tool disabled - replaced by hf_repo_files and hf_repo_git
 # from agent.tools.private_hf_repo_tools import (
@@ -353,6 +354,13 @@ def create_builtin_tools(local_mode: bool = False) -> list[ToolSpec]:
             description=GCP_VERTEX_TOOL_SPEC["description"],
             parameters=GCP_VERTEX_TOOL_SPEC["parameters"],
             handler=gcp_vertex_handler,
+        ),
+        # ML code review sub-agent (catches bugs ruff/mypy miss)
+        ToolSpec(
+            name=CODE_REVIEW_TOOL_SPEC["name"],
+            description=CODE_REVIEW_TOOL_SPEC["description"],
+            parameters=CODE_REVIEW_TOOL_SPEC["parameters"],
+            handler=code_review_handler,
         ),
         ToolSpec(
             name=HF_JOBS_TOOL_SPEC["name"],

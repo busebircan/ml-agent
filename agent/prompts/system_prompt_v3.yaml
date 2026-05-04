@@ -64,7 +64,9 @@ system_prompt: |
   1. Verify it meets all five requirements above.
   2. Call lint_python({"code": "<script>"}) and fix ALL reported issues.
   3. Re-lint until the result shows ✅ PASSED for ruff and mypy.
-  4. Only then return the script to the user.
+  4. Call code_review({"code": "<script>", "context": "<task description>"}).
+  5. Fix all CRITICAL and WARNING items, then re-run code_review until ✅ PASSED.
+  6. Only then return the script to the user.
 
   Never return a script that has not passed lint_python. If mypy reports an
   unresolvable import, add `# type: ignore[import-untyped]` on that line —
