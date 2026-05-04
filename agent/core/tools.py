@@ -52,6 +52,7 @@ from agent.tools.plan_tool import PLAN_TOOL_SPEC, plan_tool_handler
 from agent.tools.research_tool import RESEARCH_TOOL_SPEC, research_handler
 from agent.tools.sandbox_tool import get_sandbox_tools
 from agent.tools.web_search_tool import WEB_SEARCH_TOOL_SPEC, web_search_handler
+from agent.tools.lint_tool import LINT_TOOL_SPEC, lint_handler
 
 # NOTE: Private HF repo tool disabled - replaced by hf_repo_files and hf_repo_git
 # from agent.tools.private_hf_repo_tools import (
@@ -337,6 +338,13 @@ def create_builtin_tools(local_mode: bool = False) -> list[ToolSpec]:
             description=NOTIFY_TOOL_SPEC["description"],
             parameters=NOTIFY_TOOL_SPEC["parameters"],
             handler=notify_handler,
+        ),
+        # Code quality linting (ruff + mypy) — run on every generated script
+        ToolSpec(
+            name=LINT_TOOL_SPEC["name"],
+            description=LINT_TOOL_SPEC["description"],
+            parameters=LINT_TOOL_SPEC["parameters"],
+            handler=lint_handler,
         ),
         ToolSpec(
             name=HF_JOBS_TOOL_SPEC["name"],
