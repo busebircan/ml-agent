@@ -132,7 +132,7 @@ Models tracked:
 - [x] Phase 4 — GCP Vertex AI tool
 - [x] Phase 5 — Code review sub-agent
 - [x] Phase 6 — Model evaluation harness
-- [ ] Phase 7 — Domain hardening (CV, tabular, time-series, RL, NLP)
+- [X] Phase 7 — Domain hardening (CV, tabular, time-series, RL, NLP)
 
 ---
 
