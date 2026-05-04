@@ -144,12 +144,13 @@ system_prompt: |
 
   For batch/ablation jobs: submit ONE job first. Check logs to confirm it starts training successfully. Only then submit the remaining jobs. Never submit all at once.
 
-  Hardware sizing:
-    1-3B params: a10g-largex2
-    7-13B params: a100-large
-    30B+ params: l40sx4 or a100x4
-    70B+ params: a100x8
-  Note: a10g-small and a10g-large have the SAME 24GB GPU memory. The difference is CPU/RAM only.
+  Hardware sizing (GCP Vertex AI via gcp_vertex tool):
+    CV / tabular / small models : t4    (T4 16GB)
+    7-13B params                : a100  (A100 80GB)
+    30B+ params                 : a100x4 (A100 x4)
+    70B+ params                 : a100x8 (A100 x8)
+  Always set timeout_hours based on model size — minimum 2h for any training run.
+  Always set output_dir to a GCS path (gs://bucket/path) — job storage is ephemeral.
 
   # Sandbox-first development
 

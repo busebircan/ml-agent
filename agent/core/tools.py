@@ -53,6 +53,7 @@ from agent.tools.research_tool import RESEARCH_TOOL_SPEC, research_handler
 from agent.tools.sandbox_tool import get_sandbox_tools
 from agent.tools.web_search_tool import WEB_SEARCH_TOOL_SPEC, web_search_handler
 from agent.tools.lint_tool import LINT_TOOL_SPEC, lint_handler
+from agent.tools.gcp_vertex_tool import GCP_VERTEX_TOOL_SPEC, gcp_vertex_handler
 
 # NOTE: Private HF repo tool disabled - replaced by hf_repo_files and hf_repo_git
 # from agent.tools.private_hf_repo_tools import (
@@ -345,6 +346,13 @@ def create_builtin_tools(local_mode: bool = False) -> list[ToolSpec]:
             description=LINT_TOOL_SPEC["description"],
             parameters=LINT_TOOL_SPEC["parameters"],
             handler=lint_handler,
+        ),
+        # GCP Vertex AI training job submission
+        ToolSpec(
+            name=GCP_VERTEX_TOOL_SPEC["name"],
+            description=GCP_VERTEX_TOOL_SPEC["description"],
+            parameters=GCP_VERTEX_TOOL_SPEC["parameters"],
+            handler=gcp_vertex_handler,
         ),
         ToolSpec(
             name=HF_JOBS_TOOL_SPEC["name"],

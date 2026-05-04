@@ -129,7 +129,7 @@ Models tracked:
 - [x] Phase 1 — System prompt code quality contract
 - [x] Phase 2 — Domain example scripts
 - [x] Phase 3 — Ruff + mypy linting pass
-- [ ] Phase 4 — GCP Vertex AI tool
+- [x] Phase 4 — GCP Vertex AI tool
 - [ ] Phase 5 — Code review sub-agent
 - [ ] Phase 6 — Model evaluation harness
 - [ ] Phase 7 — Domain hardening (CV, tabular, time-series, RL, NLP)
