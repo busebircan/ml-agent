@@ -52,7 +52,7 @@ all = [
 ]
 
 [project.scripts]
-ml-intern = "agent.main:cli"
+ml-agent = "agent.main:cli"
 
 [build-system]
 requires = ["setuptools>=64"]

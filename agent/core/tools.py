@@ -8,8 +8,6 @@ import warnings
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
-logger = logging.getLogger(__name__)
-
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.types import EmbeddedResource, ImageContent, TextContent
@@ -55,6 +53,10 @@ from agent.tools.web_search_tool import WEB_SEARCH_TOOL_SPEC, web_search_handler
 from agent.tools.lint_tool import LINT_TOOL_SPEC, lint_handler
 from agent.tools.gcp_vertex_tool import GCP_VERTEX_TOOL_SPEC, gcp_vertex_handler
 from agent.tools.code_review_tool import CODE_REVIEW_TOOL_SPEC, code_review_handler
+from agent.tools.generate_ml_script_tool import (
+    GENERATE_ML_SCRIPT_TOOL_SPEC,
+    generate_ml_script_handler,
+)
 
 # NOTE: Private HF repo tool disabled - replaced by hf_repo_files and hf_repo_git
 # from agent.tools.private_hf_repo_tools import (
@@ -66,6 +68,8 @@ from agent.tools.code_review_tool import CODE_REVIEW_TOOL_SPEC, code_review_hand
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="aiohttp.connector"
 )
+
+logger = logging.getLogger(__name__)
 
 NOT_ALLOWED_TOOL_NAMES = ["hf_jobs", "hf_doc_search", "hf_doc_fetch", "hf_whoami"]
 
@@ -265,6 +269,10 @@ class ToolRouter:
                 return await tool.handler(arguments, session=session)
             return await tool.handler(arguments)
 
+        # Tool not found in built-ins — build a helpful error listing available tools
+        available = sorted(self.tools.keys())
+        available_str = ", ".join(available) if available else "(none)"
+
         # Otherwise, use MCP client
         if self._mcp_initialized:
             try:
@@ -272,11 +280,16 @@ class ToolRouter:
                 output = convert_mcp_content_to_string(result.content)
                 return output, not result.is_error
             except ToolError as e:
-                # Catch MCP tool errors and return them to the agent
-                error_msg = f"Tool error: {str(e)}"
+                error_msg = (
+                    f"Tool '{tool_name}' is not available. {e}\n"
+                    f"Available tools: {available_str}"
+                )
                 return error_msg, False
 
-        return "MCP client not initialized", False
+        return (
+            f"Tool '{tool_name}' is not available. "
+            f"Available tools: {available_str}"
+        ), False
 
 
 # ============================================================================
@@ -288,6 +301,13 @@ def create_builtin_tools(local_mode: bool = False) -> list[ToolSpec]:
     """Create built-in tool specifications"""
     # in order of importance
     tools = [
+        # ML script generation sub-agent — primary tool for all ML coding tasks
+        ToolSpec(
+            name=GENERATE_ML_SCRIPT_TOOL_SPEC["name"],
+            description=GENERATE_ML_SCRIPT_TOOL_SPEC["description"],
+            parameters=GENERATE_ML_SCRIPT_TOOL_SPEC["parameters"],
+            handler=generate_ml_script_handler,
+        ),
         # Research sub-agent (delegates to read-only tools in independent context)
         ToolSpec(
             name=RESEARCH_TOOL_SPEC["name"],

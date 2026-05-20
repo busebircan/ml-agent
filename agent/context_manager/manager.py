@@ -164,9 +164,10 @@ class ContextManager:
         hf_token: str | None = None,
         local_mode: bool = False,
     ):
+        prompt_file = "system_prompt_local.yaml" if local_mode else "system_prompt_v3.yaml"
         self.system_prompt = self._load_system_prompt(
             tool_specs or [],
-            prompt_file_suffix="system_prompt_v3.yaml",
+            prompt_file_suffix=prompt_file,
             hf_token=hf_token,
             local_mode=local_mode,
         )

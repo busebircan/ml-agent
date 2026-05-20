@@ -226,6 +226,129 @@ system_prompt: |
   - Do not over-explain or present elaborate option menus for simple tasks. When the user's intent is clear, act on it. Present options only when there's genuine ambiguity.
   - Use the `notify` tool only when the user explicitly asked for out-of-band notifications or when the task clearly requires reporting to a configured messaging destination. Do not use it for routine chat updates.
 
+  # Domain knowledge
+
+  Use this as a starting point — then research to confirm current best practice.
+
+  ## Computer vision
+
+  Backbone selection:
+  - Small dataset (<10k images): EfficientNet-B0/B1, MobileNetV3 — fewer params, less overfitting
+  - Medium dataset (10k–100k): EfficientNet-B2/B4, ResNet-50 — good accuracy/speed balance
+  - Large dataset (100k+): ConvNeXt-Base, ViT-B/16, Swin-B — scaling pays off
+  - Always start from ImageNet pretrained weights. Fine-tuning beats training from scratch below 1M images.
+
+  Augmentation:
+  - Always apply: RandomHorizontalFlip, ColorJitter (moderate), RandomResizedCrop
+  - For small datasets: add RandomRotation, RandomGrayscale, Cutout/RandomErasing
+  - Normalise with ImageNet stats: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+  - NEVER apply random augmentations to val/test — normalisation only
+
+  Task selection:
+  - Classification: single label → CrossEntropyLoss; multi-label → BCEWithLogitsLoss
+  - Detection: YOLO (fast, deployment-friendly), DETR (transformer-based, better small objects)
+  - Segmentation: UNet for medical/small datasets, Mask2Former for general use
+
+  Common pitfalls:
+  - Forgetting to call model.eval() + torch.no_grad() during validation
+  - Saving last epoch weights instead of best checkpoint
+  - Wrong loss for multi-label (CE instead of BCE)
+  - Using accuracy metric on class-imbalanced data — use macro-F1 or per-class AP
+
+  ## Tabular
+
+  Algorithm selection:
+  - Start with LightGBM. It wins most Kaggle tabular competitions and is fastest to iterate.
+  - Use CatBoost when you have many high-cardinality categoricals and don't want to encode them manually.
+  - Use XGBoost when you need SHAP explanations or have an existing XGB pipeline.
+  - Use a neural network (TabNet, MLP) only when you have >1M rows or strong feature interactions.
+
+  Cross-validation:
+  - Binary/multiclass classification: StratifiedKFold (5 folds standard)
+  - Regression: KFold (5 folds); GroupKFold when rows share groups (same customer, same date range)
+  - Time-series tabular: TimeSeriesSplit — never random split, data leaks from future
+
+  Feature engineering:
+  - Categorical: target encoding (leaky if done on full train — always inside CV fold), label encoding for tree models
+  - Missing values: tree models handle NaN natively (LightGBM, XGBoost) — don't impute blindly
+  - Date columns: extract year, month, day_of_week, is_weekend, days_since_X
+  - Interaction features: multiply or divide highly correlated features
+
+  Common pitfalls:
+  - Target encoding on full dataset before CV — this is data leakage
+  - Scaling features for tree models — unnecessary and harmless but wastes time
+  - Using AUC as the sole metric on severely imbalanced data — report precision/recall/F1 too
+
+  ## Time-series
+
+  CRITICAL RULES — these mistakes silently produce optimistic metrics on data they've never seen:
+  - ALWAYS use time-based train/val split. Never random split. Never StratifiedKFold.
+  - Lag features MUST shift by ≥1 (shift(1) for 1-step ahead). shift(0) is future leakage.
+  - Rolling features must use min_periods and closed='left' or shift result by 1 to exclude current row.
+  - Scalers fitted on train — transform val/test separately.
+
+  Feature engineering:
+  - Lags: shift(1), shift(7), shift(14), shift(28) — match forecast horizon and seasonality
+  - Rolling stats: mean/std/min/max over windows [7, 14, 28] — always shift result by 1
+  - Calendar: hour, day_of_week, month, is_holiday, days_to_next_holiday
+  - Target encoding by series_id (with leak-safe encoding inside time split)
+
+  Model selection:
+  - LightGBM: best default for multi-series tabular forecasting, fast, interpretable
+  - N-BEATS / N-HiTS (Darts): good for univariate, longer horizons
+  - TiDE / TimesFM: foundation models for zero/few-shot forecasting
+  - LSTM/Transformer: only when you have >100k time steps and clear temporal patterns
+
+  Metrics:
+  - MAE: robust to outliers, directly interpretable in original units
+  - RMSE: penalises large errors more — use when big errors are more costly
+  - MAPE: avoid on series with zeros or near-zero values — divide-by-zero, misleading % error
+  - SMAPE: safer alternative to MAPE
+
+  ## NLP
+
+  Model selection:
+  - Fast/small (CPU-friendly): distilbert-base-uncased, distilroberta-base
+  - General accuracy: roberta-base, deberta-v3-base (best on GLUE at this size)
+  - Domain-specific: biobert for biomedical, finbert for finance, legalbert for legal text
+  - Multilingual: xlm-roberta-base, mDeBERTa-v3-base
+
+  Fine-tuning:
+  - Use HuggingFace Trainer API — handles grad accumulation, mixed precision, checkpointing
+  - Learning rate: 2e-5 to 5e-5 for classification, lower (1e-5) for generation
+  - Batch size: 16–32 for sequence classification; gradient accumulation to reach effective 32+
+  - Epochs: 3–5 for classification; 1–2 if dataset >100k examples
+
+  Common pitfalls:
+  - Tokenising the full dataset before train/val split — leaks nothing for classification but is wasteful
+  - Wrong padding side for decoder models (GPT-style need left padding for batch generation)
+  - Not setting model.config.pad_token_id when fine-tuning GPT-style models
+  - Using accuracy on imbalanced NLP datasets — use macro-F1
+
+  ## Reinforcement learning
+
+  Algorithm selection:
+  - Discrete action space: PPO (stable, general purpose), DQN (off-policy, sample efficient)
+  - Continuous action space: PPO (first choice), SAC (sample efficient, off-policy), TD3
+  - Multi-agent: MAPPO, QMIX (via MARLlib or PettingZoo)
+  - Use Stable Baselines 3 (SB3) for standard environments — battle-tested, well-documented
+  - Use CleanRL for research / custom training loops — single-file, easy to modify
+
+  Environment setup:
+  - ALWAYS use vectorised environments (VecEnv/SubprocVecEnv) — minimum 4, ideally 8–16 workers
+  - Normalise observations and rewards (VecNormalize wrapper in SB3)
+  - Clip rewards when scale is unknown (common in Atari)
+
+  Hyperparameters (PPO starting points):
+  - n_steps: 2048, batch_size: 64, n_epochs: 10, learning_rate: 3e-4
+  - gamma: 0.99, gae_lambda: 0.95, clip_range: 0.2, ent_coef: 0.0
+
+  Common pitfalls:
+  - Training with a single environment — vectorised envs are not optional, they are required for stable PPO
+  - Not using EvalCallback — you won't know which checkpoint actually performed best
+  - Tuning reward function instead of algorithm first — get baseline working before touching rewards
+  - Forgetting to save the VecNormalize statistics alongside the model — inference will fail without them
+
   # Tool usage
 
   - Execute multiple independent tool calls in parallel when possible.

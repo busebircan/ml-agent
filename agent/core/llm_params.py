@@ -139,8 +139,23 @@ def _resolve_llm_params(
     """
     if model_name.startswith("ollama/"):
         # Local Ollama instance — no API key needed.
-        # LiteLLM routes ollama/ to http://localhost:11434 automatically.
-        return {"model": model_name}
+        # api_base must be explicit: some litellm versions don't auto-route
+        # ollama/ when tool_choice or stream_options are present.
+        # num_ctx: default is 4096 which is too small for system prompt + 30 tools.
+        # 16384 is the sweet spot for 8B-14B models on 32GB RAM — enough context
+        # without the RAM overhead that slows CPU inference.
+        # think: false — qwen3 models default to extended thinking mode which adds
+        # silent multi-minute pauses before every tool call on a 4B model. Disable it
+        # so the model goes straight to generating the response/tool call.
+        is_qwen3 = "qwen3" in model_name.lower()
+        extra_body: dict = {"options": {"num_ctx": 16384}}
+        if is_qwen3:
+            extra_body["think"] = False
+        return {
+            "model": model_name,
+            "api_base": "http://localhost:11434",
+            "extra_body": extra_body,
+        }
 
     if model_name.startswith("groq/"):
         params = {"model": model_name}

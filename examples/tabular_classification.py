@@ -5,18 +5,21 @@ Demonstrates the project code quality contract:
 - Typed config via dataclass
 - argparse CLI entry point
 - logging (no print)
-- Modular structure: load_data / build_model / train / evaluate / export
+- Modular structure: load_data / engineer_features / build_model / train / evaluate / export
+- SHAP feature importance logged after training
 """
 
 import argparse
 import logging
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
-from lightgbm import LGBMClassifier
+import shap
+from lightgbm import LGBMClassifier, early_stopping, log_evaluation
 from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
@@ -49,6 +52,12 @@ class Config:
     n_jobs: int = -1
 
 
+def set_seeds(seed: int) -> None:
+    """Fix random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+
+
 def load_data(cfg: Config) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load train and test CSVs, return (train_df, test_df)."""
     train_df = pd.read_csv(cfg.data_path)
@@ -63,19 +72,29 @@ def engineer_features(
     test_df: pd.DataFrame,
     target_col: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
-    """Encode categoricals, return (train_df, test_df, feature_cols)."""
-    combined = pd.concat([train_df.drop(columns=[target_col]), test_df], axis=0)
-    cat_cols = combined.select_dtypes(include=["object", "category"]).columns.tolist()
+    """Encode categoricals — fit on train only, transform both.
+
+    Returns (train_features, test_features, feature_cols).
+    """
+    feature_cols_train = [c for c in train_df.columns if c != target_col]
+    cat_cols = (
+        train_df[feature_cols_train]
+        .select_dtypes(include=["object", "category"])
+        .columns.tolist()
+    )
+
+    train_features = train_df[feature_cols_train].copy()
+    test_features = test_df[feature_cols_train].copy()
 
     for col in cat_cols:
         le = LabelEncoder()
-        combined[col] = le.fit_transform(combined[col].astype(str))
+        train_features[col] = le.fit_transform(train_features[col].astype(str))
+        # Handle unseen categories in test gracefully
+        test_features[col] = test_features[col].astype(str).map(
+            lambda x, le=le: le.transform([x])[0] if x in le.classes_ else -1  # noqa: B023
+        )
 
-    n_train = len(train_df)
-    train_features = combined.iloc[:n_train].copy()
-    test_features = combined.iloc[n_train:].copy()
-
-    feature_cols = [c for c in train_features.columns]
+    feature_cols = feature_cols_train
     logger.info("Features: %d | Categorical encoded: %d", len(feature_cols), len(cat_cols))
     return train_features, test_features, feature_cols
 
@@ -98,14 +117,13 @@ def build_model(cfg: Config) -> LGBMClassifier:
 
 
 def train(
-    train_df: pd.DataFrame,
     train_features: pd.DataFrame,
+    y: np.ndarray,
     feature_cols: list[str],
     cfg: Config,
 ) -> tuple[list[LGBMClassifier], np.ndarray]:
-    """Stratified k-fold training. Returns (models, oof_predictions)."""
+    """Stratified k-fold training. Returns (fold_models, oof_predictions)."""
     X = train_features[feature_cols].values
-    y = train_df[cfg.target_col].values
     oof_preds = np.zeros(len(X))
     models: list[LGBMClassifier] = []
 
@@ -116,13 +134,18 @@ def train(
 
         model = build_model(cfg)
         model.fit(
-            X_tr, y_tr,
+            X_tr,
+            y_tr,
             eval_set=[(X_val, y_val)],
-            callbacks=[],
+            callbacks=[
+                early_stopping(cfg.early_stopping_rounds, verbose=False),
+                log_evaluation(period=0),
+            ],
         )
         oof_preds[val_idx] = model.predict_proba(X_val)[:, 1]
         fold_auc = roc_auc_score(y_val, oof_preds[val_idx])
-        logger.info("Fold %d/%d | val_auc=%.4f", fold, cfg.n_folds, fold_auc)
+        logger.info("Fold %d/%d | val_auc=%.4f | best_iter=%d",
+                    fold, cfg.n_folds, fold_auc, model.best_iteration_)
         models.append(model)
 
     oof_auc = roc_auc_score(y, oof_preds)
@@ -131,21 +154,39 @@ def train(
 
 
 def evaluate(
+    y: np.ndarray,
+    oof_preds: np.ndarray,
+) -> None:
+    """Log classification report on true OOF predictions."""
+    oof_labels = (oof_preds > 0.5).astype(int)
+    logger.info("Classification report (OOF):\n%s", classification_report(y, oof_labels))
+    logger.info("OOF ROC-AUC: %.4f", roc_auc_score(y, oof_preds))
+
+
+def shap_importance(
     models: list[LGBMClassifier],
-    train_df: pd.DataFrame,
     train_features: pd.DataFrame,
     feature_cols: list[str],
     cfg: Config,
 ) -> None:
-    """Log full classification report on OOF predictions."""
+    """Compute and log mean |SHAP| feature importance across folds."""
     X = train_features[feature_cols].values
-    y = train_df[cfg.target_col].values
-    oof_preds = np.mean(
-        [m.predict_proba(X)[:, 1] for m in models], axis=0
-    )
-    oof_labels = (oof_preds > 0.5).astype(int)
-    logger.info("Classification report:\n%s", classification_report(y, oof_labels))
-    logger.info("ROC-AUC: %.4f", roc_auc_score(y, oof_preds))
+    shap_values_all: list[np.ndarray] = []
+    for model in models:
+        explainer = shap.TreeExplainer(model)
+        sv = explainer.shap_values(X)
+        # For binary classification shap returns [neg_class, pos_class] — take positive
+        if isinstance(sv, list):
+            sv = sv[1]
+        shap_values_all.append(np.abs(sv))
+
+    mean_shap = np.mean(shap_values_all, axis=0).mean(axis=0)
+    importance = pd.Series(mean_shap, index=feature_cols).sort_values(ascending=False)
+    logger.info("SHAP feature importance (top 20):\n%s", importance.head(20).to_string())
+
+    cfg.output_dir.mkdir(parents=True, exist_ok=True)
+    importance.to_csv(cfg.output_dir / "shap_importance.csv", header=["mean_abs_shap"])
+    logger.info("SHAP importance saved to %s", cfg.output_dir / "shap_importance.csv")
 
 
 def export(
@@ -184,6 +225,7 @@ def parse_args() -> Config:
     parser.add_argument("--n-estimators", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=0.05)
     parser.add_argument("--num-leaves", type=int, default=31)
+    parser.add_argument("--early-stopping-rounds", type=int, default=50)
     args = parser.parse_args()
     return Config(
         data_path=args.data_path,
@@ -195,18 +237,23 @@ def parse_args() -> Config:
         n_estimators=args.n_estimators,
         learning_rate=args.lr,
         num_leaves=args.num_leaves,
+        early_stopping_rounds=args.early_stopping_rounds,
     )
 
 
 def main() -> None:
     cfg = parse_args()
+    set_seeds(cfg.seed)
     logger.info("Config: %s", cfg)
+
     train_df, test_df = load_data(cfg)
+    y = train_df[cfg.target_col].values
     train_features, test_features, feature_cols = engineer_features(
         train_df, test_df, cfg.target_col
     )
-    models, _ = train(train_df, train_features, feature_cols, cfg)
-    evaluate(models, train_df, train_features, feature_cols, cfg)
+    models, oof_preds = train(train_features, y, feature_cols, cfg)
+    evaluate(y, oof_preds)
+    shap_importance(models, train_features, feature_cols, cfg)
     export(models, test_features, feature_cols, cfg)
 
 

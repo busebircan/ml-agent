@@ -97,6 +97,42 @@ def _get_hf_user(token: str | None) -> str | None:
         return None
 
 
+async def _ensure_ollama_model(model_name: str) -> None:
+    """Pull the Ollama model if it isn't already available locally.
+
+    Strips the 'ollama/' prefix, checks `ollama list`, and runs
+    `ollama pull` inheriting the terminal so the native progress
+    bar renders correctly (ollama uses \\r not \\n for progress).
+    """
+    import subprocess
+    from rich.console import Console
+    console = Console()
+
+    tag = model_name.removeprefix("ollama/")
+
+    # Check if already pulled
+    try:
+        result = subprocess.run(
+            ["ollama", "list"], capture_output=True, text=True, timeout=10
+        )
+        if tag in result.stdout:
+            return  # already available
+    except Exception:
+        return  # ollama not found or not running — let the LLM call fail naturally
+
+    console.print(f"\nModel [bold rgb(255,200,80)]{tag}[/bold rgb(255,200,80)] not found locally — pulling now (this may take a few minutes)...\n")
+    try:
+        # Inherit stdin/stdout/stderr so ollama's native progress bar renders
+        proc = await asyncio.create_subprocess_exec("ollama", "pull", tag)
+        await proc.wait()
+        if proc.returncode == 0:
+            console.print(f"\nModel [bold rgb(255,200,80)]{tag}[/bold rgb(255,200,80)] ready.\n")
+        else:
+            console.print(f"\n[yellow]Warning: ollama pull exited with code {proc.returncode}[/yellow]\n")
+    except Exception as e:
+        console.print(f"\n[yellow]Warning: could not pull {tag}: {e}[/yellow]\n")
+
+
 async def _prompt_and_save_hf_token(prompt_session: PromptSession) -> str:
     """Prompt user for HF token, validate it, save via huggingface_hub.login(). Loops until valid."""
     from prompt_toolkit.formatted_text import HTML
@@ -957,10 +993,19 @@ async def main(model: str | None = None):
     if model:
         config.model_name = model
 
-    # Resolve username for banner
-    hf_user = _get_hf_user(hf_token)
+    # Resolve username for banner — 5s timeout so local/Ollama mode doesn't hang
+    try:
+        hf_user = await asyncio.wait_for(
+            asyncio.to_thread(_get_hf_user, hf_token), timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        hf_user = None
 
     print_banner(model=config.model_name, hf_user=hf_user)
+
+    # Auto-pull Ollama model if not already available locally
+    if config.model_name.startswith("ollama/"):
+        await _ensure_ollama_model(config.model_name)
 
     # Pre-warm the HF router catalog in the background so /model switches
     # don't block on a network fetch.

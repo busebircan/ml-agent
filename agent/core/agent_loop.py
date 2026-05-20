@@ -5,7 +5,6 @@ Main agent implementation with integrated tool system and MCP support
 import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -731,15 +730,17 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
     _healed_effort = False  # one-shot safety net per call
     _healed_thinking_signature = False
     messages, tools = with_prompt_caching(messages, tools, llm_params.get("model"))
+    messages = _sanitize_messages(messages, llm_params.get("model", ""))
     t_start = time.monotonic()
     for _llm_attempt in range(_MAX_LLM_RETRIES):
         try:
+            _is_ollama = llm_params.get("model", "").startswith("ollama/")
             response = await acompletion(
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
                 stream=True,
-                stream_options={"include_usage": True},
+                **({"stream_options": {"include_usage": True}} if not _is_ollama else {}),
                 timeout=600,
                 **llm_params,
             )
@@ -786,6 +787,10 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
     final_usage_chunk = None
     chunks = []
     should_replay_thinking = _should_replay_thinking_state(llm_params.get("model"))
+    # Track <think>...</think> blocks emitted by qwen3/Ollama so we don't
+    # display raw reasoning tokens as assistant output.
+    _in_think_block = False
+    _think_buf = ""
 
     async for chunk in response:
         chunks.append(chunk)
@@ -805,9 +810,34 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
             finish_reason = choice.finish_reason
 
         if delta.content:
-            full_content += delta.content
+            raw = delta.content
+            # Filter out <think>...</think> blocks streamed by qwen3 Ollama.
+            # We accumulate into a buffer while inside a think block and
+            # discard it; only real content reaches full_content / the UI.
+            if _in_think_block:
+                _think_buf += raw
+                if "</think>" in _think_buf:
+                    # Emit everything after the closing tag as real content
+                    after = _think_buf.split("</think>", 1)[1]
+                    _in_think_block = False
+                    _think_buf = ""
+                    raw = after
+                else:
+                    continue  # still inside think block — swallow chunk
+            elif "<think>" in raw:
+                before, rest = raw.split("<think>", 1)
+                if "</think>" in rest:
+                    after = rest.split("</think>", 1)[1]
+                    raw = before + after
+                else:
+                    _in_think_block = True
+                    _think_buf = rest
+                    raw = before  # only the part before <think> is real
+            if not raw:
+                continue
+            full_content += raw
             await session.send_event(
-                Event(event_type="assistant_chunk", data={"content": delta.content})
+                Event(event_type="assistant_chunk", data={"content": raw})
             )
 
         if delta.tool_calls:
@@ -848,6 +878,15 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
         except Exception:
             logger.debug("Failed to rebuild streaming thinking state", exc_info=True)
 
+    # Ollama + Qwen fallback: tool calls come back as plain text JSON in content
+    # instead of structured tool_calls. Parse and promote them.
+    _is_ollama = llm_params.get("model", "").startswith("ollama/")
+    if not tool_calls_acc and full_content and _is_ollama:
+        parsed = _parse_ollama_text_tool_calls(full_content)
+        if parsed:
+            tool_calls_acc = parsed
+            full_content = None  # consumed as tool call, not text
+
     return LLMResult(
         content=full_content or None,
         tool_calls_acc=tool_calls_acc,
@@ -862,10 +901,11 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
 def _sanitize_messages(messages: list, model: str) -> list:
     """Strip non-standard message fields that some providers reject.
 
-    Groq rejects any extra fields (e.g. 'timestamp') on message objects.
-    Convert each message to a plain dict with only the fields the provider accepts.
+    Many providers (Groq, Gemini, HF router, Kimi, etc.) reject extra fields
+    like 'timestamp' on message objects. Always strip to be safe.
     """
-    if not (model.startswith("groq/") or model.startswith("gemini/")):
+    # Anthropic native API handles extra fields gracefully — skip for speed.
+    if model.startswith("anthropic/") or model.startswith("bedrock/"):
         return messages
     standard_fields = {"role", "content", "name", "tool_calls", "tool_call_id"}
     sanitized = []
@@ -873,15 +913,101 @@ def _sanitize_messages(messages: list, model: str) -> list:
         if isinstance(msg, dict):
             sanitized.append({k: v for k, v in msg.items() if k in standard_fields})
         else:
-            # litellm Message object — convert to dict and strip extras
-            msg_dict = {k: v for k, v in vars(msg).items() if k in standard_fields and v is not None}
-            # fallback: use role/content at minimum
+            # litellm Message objects store fields in model_fields / __fields__,
+            # not reliably in __dict__. Use getattr per field to avoid silently
+            # dropping tool_calls / tool_call_id (which breaks tool-call history).
+            msg_dict = {}
+            for k in standard_fields:
+                v = getattr(msg, k, None)
+                if v is not None:
+                    msg_dict[k] = v
             if "role" not in msg_dict:
                 msg_dict["role"] = getattr(msg, "role", "user")
             if "content" not in msg_dict:
                 msg_dict["content"] = getattr(msg, "content", "")
             sanitized.append(msg_dict)
     return sanitized
+
+
+def _parse_ollama_text_tool_calls(content: str) -> dict[int, dict]:
+    """Parse Qwen's native tool-call format when Ollama returns it as plain text.
+
+    Qwen emits tool calls as JSON in the content field rather than in the
+    structured tool_calls array. Handles two known formats:
+      {"name": "tool", "arguments": {...}}
+      {"function_name": "tool", "function_arg": {...}}
+    Returns a tool_calls_acc dict (same shape as the streaming accumulator)
+    or an empty dict if content doesn't look like a tool call.
+    """
+    import json
+    import uuid
+    import re
+    text = content.strip()
+    # Strip <think>...</think> blocks that qwen3 emits even with think=False sometimes
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip optional <tool_call>...</tool_call> wrapper
+    m = re.search(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)
+    if m:
+        text = m.group(1).strip()
+    # Must look like a JSON object
+    if not (text.startswith("{") and text.endswith("}")):
+        return {}
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+
+    # Format 1: {"name": "...", "arguments": {...}}
+    name = obj.get("name")
+    args = obj.get("arguments")
+    # Format 2: {"function_name": "...", "function_arg": {...}}
+    if not name:
+        name = obj.get("function_name")
+        args = obj.get("function_arg") or obj.get("function_args") or {}
+    # Format 3: full OpenAI shape {"id": "...", "type": "function", "function": {"name": ..., "arguments": ...}}
+    if not name and obj.get("type") == "function" and isinstance(obj.get("function"), dict):
+        fn = obj["function"]
+        name = fn.get("name")
+        args = fn.get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+    # Format 4: {"function": "...", "parameters": {...}}
+    if not name and isinstance(obj.get("function"), str):
+        name = obj.get("function")
+        args = obj.get("parameters") or obj.get("arguments") or {}
+    # Generic fallback: any key ending in "name"/"function" paired with args/params
+    if not name:
+        for k in ("tool", "action", "tool_name", "action_name"):
+            if isinstance(obj.get(k), str):
+                name = obj[k]
+                args = obj.get("parameters") or obj.get("arguments") or obj.get("input") or {}
+                break
+
+    if not name or not isinstance(name, str):
+        return {}
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except json.JSONDecodeError:
+            args = {}
+    if not isinstance(args, dict):
+        args = {}
+
+    return {
+        0: {
+            "id": f"call_{uuid.uuid4().hex[:8]}",
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": json.dumps(args),
+            },
+        }
+    }
 
 
 async def _call_llm_non_streaming(session: Session, messages, tools, llm_params) -> LLMResult:
@@ -957,6 +1083,13 @@ async def _call_llm_non_streaming(session: Session, messages, tools, llm_params)
                     "arguments": tc.function.arguments,
                 },
             }
+
+    # Ollama + Qwen fallback: tool calls come back as plain text JSON in content
+    # instead of structured tool_calls. Parse and promote them.
+    if not tool_calls_acc and content and llm_params.get("model", "").startswith("ollama/"):
+        tool_calls_acc = _parse_ollama_text_tool_calls(content)
+        if tool_calls_acc:
+            content = None  # consumed as tool call, not text
 
     # Emit the full message as a single event
     if content:
@@ -1108,7 +1241,8 @@ class Handlers:
                     session.hf_token,
                     reasoning_effort=session.effective_effort_for(session.config.model_name),
                 )
-                if session.stream:
+                _use_streaming = session.stream
+                if _use_streaming:
                     llm_result = await _call_llm_streaming(session, messages, tools, llm_params)
                 else:
                     llm_result = await _call_llm_non_streaming(session, messages, tools, llm_params)

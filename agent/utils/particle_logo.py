@@ -69,9 +69,8 @@ def run_particle_logo(console: Console, hold_seconds: float = 1.5) -> None:
 
     canvas = BrailleCanvas(term_width, term_height)
 
-    # Get target positions from text
-    text_pixels_line1 = text_to_pixels("HUGGING FACE", scale=2)
-    text_pixels_line2 = text_to_pixels("ML INTERN", scale=2)
+    # Get target positions from text — only line 1 is animated
+    text_pixels_line1 = text_to_pixels("BUSE'S ML AGENT", scale=2)
 
     # Calculate dimensions for centering
     def get_bounds(pixels):
@@ -82,25 +81,16 @@ def run_particle_logo(console: Console, hold_seconds: float = 1.5) -> None:
         return min(xs), max(xs), min(ys), max(ys)
 
     min_x1, max_x1, min_y1, max_y1 = get_bounds(text_pixels_line1)
-    min_x2, max_x2, min_y2, max_y2 = get_bounds(text_pixels_line2)
-
     w1, h1 = max_x1 - min_x1 + 1, max_y1 - min_y1 + 1
-    w2, h2 = max_x2 - min_x2 + 1, max_y2 - min_y2 + 1
 
-    total_h = h1 + 6 + h2  # gap between lines
-    start_y = (canvas.pixel_height - total_h) // 2
+    start_y = (canvas.pixel_height - h1) // 2
 
     # Center line 1
     offset_x1 = (canvas.pixel_width - w1) // 2 - min_x1
     offset_y1 = start_y - min_y1
     targets_1 = [(p[0] + offset_x1, p[1] + offset_y1) for p in text_pixels_line1]
 
-    # Center line 2
-    offset_x2 = (canvas.pixel_width - w2) // 2 - min_x2
-    offset_y2 = start_y + h1 + 6 - min_y2
-    targets_2 = [(p[0] + offset_x2, p[1] + offset_y2) for p in text_pixels_line2]
-
-    all_targets = targets_1 + targets_2
+    all_targets = targets_1
 
     # Subsample for performance — take every Nth pixel
     step = max(1, len(all_targets) // 1500)
@@ -226,3 +216,7 @@ def run_particle_logo(console: Console, hold_seconds: float = 1.5) -> None:
                 final.append(ch, style="rgb(255,200,80)")
         final.append("\n")
     console.print(Align.center(final))
+
+    # Subtitle — plain text, same gold, centred below the logo
+    subtitle = Text("Built on Hugging Face's ML Intern", style="rgb(180,140,40)")
+    console.print(Align.center(subtitle))

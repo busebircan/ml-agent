@@ -24,6 +24,9 @@ from agent.core.effort_probe import ProbeInconclusive, probe_effort
 # ":cheapest" / ":preferred" / ":<provider>" to override the default
 # routing policy (auto = fastest with failover).
 SUGGESTED_MODELS = [
+    {"id": "ollama/qwen3:4b", "label": "Qwen3 4B — local, fits in 4GB VRAM (default)"},
+    {"id": "ollama/qwen3:8b", "label": "Qwen3 8B — local, CPU only on T550"},
+    {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen 2.5 72B — HF router fallback"},
     {"id": "openai/gpt-5.5", "label": "GPT-5.5"},
     {"id": "openai/gpt-5.4", "label": "GPT-5.4"},
     {"id": "anthropic/claude-opus-4-7", "label": "Claude Opus 4.7"},

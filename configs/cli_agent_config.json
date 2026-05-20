@@ -1,5 +1,5 @@
 {
-  "model_name": "ollama/qwen2.5-coder:32b",
+  "model_name": "ollama/qwen3:4b",
   "save_sessions": true,
   "session_dataset_repo": "smolagents/ml-intern-sessions",
   "share_traces": true,
