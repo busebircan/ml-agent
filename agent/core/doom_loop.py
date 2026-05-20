@@ -154,11 +154,11 @@ def check_for_doom_loop(messages: list[Message]) -> str | None:
         return None
 
     # Check for identical consecutive calls
-    tool_name = detect_identical_consecutive(signatures, threshold=3)
+    tool_name = detect_identical_consecutive(signatures, threshold=2)
     if tool_name:
         logger.warning(
             "Repetition guard activated: %d+ identical consecutive calls to '%s'",
-            3,
+            2,
             tool_name,
         )
         return (

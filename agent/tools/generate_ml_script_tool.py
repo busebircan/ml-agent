@@ -137,6 +137,21 @@ Return ONLY the Python script. No markdown fences, no explanation, no comments o
 The output must be valid Python that can be saved directly to a .py file and run.
 """
 
+# Lighter system prompt for local 4B models — shorter expected output so
+# the model completes within the 120s timeout on 4 GB VRAM hardware.
+# We drop the boilerplate requirements (typed config, argparse, logging) and
+# just ask for a clean, runnable script. Quality is still good for a 4B model.
+_GENERATION_SYSTEM_PROMPT_LOCAL = """\
+You are an ML engineering assistant. Write a concise, runnable Python script for the given task.
+
+Rules:
+- Return ONLY Python code. No markdown fences, no explanation.
+- Keep the script short and focused — under 80 lines if possible.
+- Use standard imports (sklearn, pandas, numpy, torch, etc.) as needed.
+- The script must run without errors on a standard ML environment.
+- Include a simple __main__ block so the script can be run directly.
+"""
+
 # ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
@@ -240,8 +255,12 @@ async def generate_ml_script_handler(
     )
     user_prompt = "\n".join(user_prompt_parts) + example_section
 
+    # Local models use a lighter system prompt — full boilerplate requirements
+    # push output length past what a 4B model can generate within the timeout.
+    sys_prompt = _GENERATION_SYSTEM_PROMPT_LOCAL if _is_local else _GENERATION_SYSTEM_PROMPT
+
     messages: list[Message] = [
-        Message(role="system", content=_GENERATION_SYSTEM_PROMPT),
+        Message(role="system", content=sys_prompt),
         Message(role="user", content=user_prompt),
     ]
 
@@ -259,8 +278,11 @@ async def generate_ml_script_handler(
         getattr(session, "hf_token", None),
     )
 
-    # Local models: 240s is enough with think=False. Cloud models: 180s.
-    _gen_timeout = 240 if _is_local else 180
+    # Local models: cap at 120s + 1200 output tokens so the 4B model always
+    # finishes within time on 4 GB VRAM (~10-15 tok/s → ~80-120s for 1200 tok).
+    # Cloud models: 180s, no token cap (large models generate fast).
+    _gen_timeout = 120 if _is_local else 180
+    _max_tokens = 1200 if _is_local else None
 
     if not _is_local:
         await _log("Generating script...")
@@ -269,12 +291,10 @@ async def generate_ml_script_handler(
     try:
         _msgs, _ = with_prompt_caching(messages, None, llm_params.get("model"))
         _t0 = time.monotonic()
-        response = await acompletion(
-            messages=_msgs,
-            stream=False,
-            timeout=_gen_timeout,
-            **llm_params,
-        )
+        call_kwargs = dict(messages=_msgs, stream=False, timeout=_gen_timeout, **llm_params)
+        if _max_tokens is not None:
+            call_kwargs["max_tokens"] = _max_tokens
+        response = await acompletion(**call_kwargs)
         try:
             await telemetry.record_llm_call(
                 session,
@@ -291,8 +311,26 @@ async def generate_ml_script_handler(
 
         script = response.choices[0].message.content or ""
     except Exception as e:
-        logger.error("Script generation LLM call failed: %s", e)
-        return f"Script generation failed: {e}", False
+        err_str = str(e)
+        # Normalize timeout messages — strip variable elapsed-time so the
+        # doom-loop detector sees identical result hashes across retries.
+        import re as _re
+        err_normalized = _re.sub(r"time taken=[\d.]+ seconds", "time taken=<elapsed>", err_str)
+        err_normalized = _re.sub(r"Timeout passed=[\d.]+,?\s*", "", err_normalized)
+        logger.error("Script generation LLM call failed: %s", err_str)
+        if "timeout" in err_str.lower() or "timed out" in err_str.lower():
+            return (
+                f"[generate_ml_script FAILED — TIMEOUT]\n"
+                f"Ollama did not respond within the time limit. "
+                f"DO NOT call generate_ml_script again — retrying will produce the same timeout. "
+                f"Tell the user: script generation timed out. Ask them to check that Ollama is "
+                f"running ('ollama ps'), try a simpler/shorter task description, or restart Ollama."
+            ), False
+        return (
+            f"[generate_ml_script FAILED]\n"
+            f"Script generation failed: {err_normalized}\n"
+            f"DO NOT retry generate_ml_script with the same arguments."
+        ), False
 
     # Strip markdown code fences if the model added them
     script = _strip_code_fences(script)
