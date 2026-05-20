@@ -3,8 +3,30 @@ Terminal display utilities — rich-powered CLI formatting.
 """
 
 import re
+import sys
 
 from rich.console import Console
+
+
+def _safe_char(unicode_char: str, ascii_fallback: str) -> str:
+    """Return unicode_char if stdout can encode it, else ascii_fallback.
+
+    On Windows PowerShell / headless mode stdout uses cp1252, which can't
+    encode box-drawing characters like ▸ (U+25B8) or ✓ (U+2713). Using this
+    helper ensures those characters degrade gracefully instead of raising
+    UnicodeEncodeError.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        unicode_char.encode(enc)
+        return unicode_char
+    except (UnicodeEncodeError, LookupError):
+        return ascii_fallback
+
+
+_ARROW = _safe_char("▸", ">")
+_CHECK = _safe_char("✓", "+")
+
 from rich.markdown import Heading, Markdown
 from rich.panel import Panel
 from rich.theme import Theme
@@ -149,7 +171,7 @@ def print_tool_call(tool_name: str, args_preview: str) -> None:
     # CRT-style: type out tool name in HF yellow
     gold = "\033[38;2;255;200;80m"
     reset = "\033[0m"
-    f.write(f"{_I}{gold}▸ ")
+    f.write(f"{_I}{gold}{_ARROW} ")
     for ch in tool_name:
         f.write(ch)
         f.flush()
@@ -226,7 +248,7 @@ class SubAgentDisplayManager:
         stats = SubAgentDisplayManager._format_stats(agent)
         label = agent["label"]
         # dim green check + dim label; stats in parens
-        line = f"{_I}\033[38;2;120;200;140m✓\033[0m \033[2m{label}\033[0m"
+        line = f"{_I}\033[38;2;120;200;140m{_CHECK}\033[0m \033[2m{label}\033[0m"
         if stats:
             line += f"  \033[2m({stats})\033[0m"
         return line
@@ -265,7 +287,7 @@ class SubAgentDisplayManager:
         """
         stats = self._format_stats(agent)
         label = agent["label"]
-        header = f"{_I}\033[38;2;255;200;80m▸ {label}\033[0m"
+        header = f"{_I}\033[38;2;255;200;80m{_ARROW} {label}\033[0m"
         if stats:
             header += f"  \033[2m({stats})\033[0m"
         if compact:

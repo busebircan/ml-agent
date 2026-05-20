@@ -212,7 +212,7 @@ async def generate_ml_script_handler(
     # and causes smaller models to spend all their time thinking about the example.
     _is_local = session.config.model_name.startswith("ollama/")
     if _is_local:
-        await _log("Generating script (local model — no reference example)...")
+        await _log("Generating script (local model - no reference example)...")
         example_code = None
     else:
         await _log("Loading reference example...")
