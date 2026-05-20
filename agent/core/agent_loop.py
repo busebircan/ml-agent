@@ -1313,10 +1313,18 @@ class Handlers:
                         )
                     )
 
-                # Signal end of streaming to the frontend
+                # Signal end of streaming to the frontend.
+                # If tool_calls were parsed from Ollama text content (content=None
+                # but tool_calls exist), discard the stream buffer so the raw
+                # JSON that was streamed to the UI is thrown away rather than
+                # rendered as assistant text.
                 if session.stream:
+                    _tool_from_content = bool(tool_calls) and content is None
                     await session.send_event(
-                        Event(event_type="assistant_stream_end", data={})
+                        Event(
+                            event_type="assistant_stream_end",
+                            data={"discard": _tool_from_content},
+                        )
                     )
 
                 # If no tool calls, add assistant message and we're done

@@ -360,7 +360,10 @@ async def event_listener(
                     await stream_buf.flush_ready(cancel_event=_cancel_event())
             elif event.event_type == "assistant_stream_end":
                 shimmer.stop()
-                await stream_buf.finish(cancel_event=_cancel_event())
+                if event.data and event.data.get("discard"):
+                    stream_buf.discard()  # tool call was parsed from streamed text — don't render the raw JSON
+                else:
+                    await stream_buf.finish(cancel_event=_cancel_event())
             elif event.event_type == "tool_call":
                 shimmer.stop()
                 stream_buf.discard()
@@ -1300,7 +1303,10 @@ async def headless_main(
                 stream_buf.add_chunk(content)
                 await stream_buf.flush_ready(instant=True)
         elif event.event_type == "assistant_stream_end":
-            await stream_buf.finish(instant=True)
+            if event.data and event.data.get("discard"):
+                stream_buf.discard()
+            else:
+                await stream_buf.finish(instant=True)
         elif event.event_type == "assistant_message":
             content = event.data.get("content", "") if event.data else ""
             if content:
