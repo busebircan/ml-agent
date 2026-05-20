@@ -201,10 +201,28 @@ class ToolRouter:
         except Exception as e:
             logger.warning("Failed to load OpenAPI search tool: %s", e)
 
-    def get_tool_specs_for_llm(self) -> list[dict[str, Any]]:
-        """Get tool specifications in OpenAI format"""
+    # Tools sent to local Ollama models. Kept small so the tool schemas fit
+    # inside the 8192 num_ctx window without crowding out conversation history.
+    # All 23 tools would consume ~7,000+ tokens, leaving no room for responses.
+    _LOCAL_CORE_TOOLS = {
+        "generate_ml_script",  # primary ML coding tool
+        "write",               # save generated scripts to disk
+        "read",                # read existing files
+        "edit",                # edit files
+        "bash",                # run commands / install packages
+        "web_search",          # quick research lookups
+    }
+
+    def get_tool_specs_for_llm(self, local_mode: bool = False) -> list[dict[str, Any]]:
+        """Get tool specifications in OpenAI format.
+
+        In local_mode, only the core tools are returned so the tool schema
+        tokens don't overwhelm the small context window of a local 4B model.
+        """
         specs = []
         for tool in self.tools.values():
+            if local_mode and tool.name not in self._LOCAL_CORE_TOOLS:
+                continue
             specs.append(
                 {
                     "type": "function",

@@ -97,10 +97,11 @@ class Session:
         self.hf_username: Optional[str] = hf_username
         self.persistence_store = persistence_store
         self.tool_router = tool_router
+        self.local_mode = local_mode
         self.stream = stream
         if config is None:
             raise ValueError("Session requires a Config")
-        tool_specs = tool_router.get_tool_specs_for_llm() if tool_router else []
+        tool_specs = tool_router.get_tool_specs_for_llm(local_mode=local_mode) if tool_router else []
         self.context_manager = context_manager or ContextManager(
             model_max_tokens=_get_max_tokens_safe(config.model_name),
             compact_size=0.1,
@@ -392,7 +393,7 @@ class Session:
         tools: list = []
         if self.tool_router is not None:
             try:
-                tools = self.tool_router.get_tool_specs_for_llm() or []
+                tools = self.tool_router.get_tool_specs_for_llm(local_mode=self.local_mode) or []
             except Exception:
                 tools = []
         # Sum per-call cost from llm_call events so analyzers don't have to

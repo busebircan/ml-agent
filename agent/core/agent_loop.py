@@ -524,7 +524,7 @@ async def _compact_and_notify(session: Session) -> None:
     )
     await cm.compact(
         model_name=session.config.model_name,
-        tool_specs=session.tool_router.get_tool_specs_for_llm(),
+        tool_specs=session.tool_router.get_tool_specs_for_llm(local_mode=getattr(session, "local_mode", False)),
         hf_token=session.hf_token,
         session=session,
     )
@@ -1230,7 +1230,7 @@ class Handlers:
                 )
 
             messages = session.context_manager.get_messages()
-            tools = session.tool_router.get_tool_specs_for_llm()
+            tools = session.tool_router.get_tool_specs_for_llm(local_mode=getattr(session, "local_mode", False))
             try:
                 # ── Call the LLM (streaming or non-streaming) ──
                 # Pull the per-model probed effort from the session cache when

@@ -141,14 +141,16 @@ def _resolve_llm_params(
         # Local Ollama instance — no API key needed.
         # api_base must be explicit: some litellm versions don't auto-route
         # ollama/ when tool_choice or stream_options are present.
-        # num_ctx: default is 4096 which is too small for system prompt + 30 tools.
-        # 16384 is the sweet spot for 8B-14B models on 32GB RAM — enough context
-        # without the RAM overhead that slows CPU inference.
+        # num_ctx: 8192 is the sweet spot for qwen3:4b on a 4GB VRAM GPU.
+        # Pre-allocated KV cache at 8192: ~1.2 GB. Model weights: ~2.5 GB.
+        # Total ~3.7 GB — leaves headroom in 4 GB VRAM for activations.
+        # 16384 would require ~2.4 GB KV cache + 2.5 GB weights = 4.9 GB,
+        # which spills to CPU and causes multi-minute hangs or timeouts.
         # think: false — qwen3 models default to extended thinking mode which adds
         # silent multi-minute pauses before every tool call on a 4B model. Disable it
         # so the model goes straight to generating the response/tool call.
         is_qwen3 = "qwen3" in model_name.lower()
-        extra_body: dict = {"options": {"num_ctx": 16384}}
+        extra_body: dict = {"options": {"num_ctx": 8192}}
         if is_qwen3:
             extra_body["think"] = False
         return {
