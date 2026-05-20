@@ -9,6 +9,8 @@ system_prompt: |
 
   # Default workflow
 
+  For conversational requests (greetings, questions, clarifications) — just reply directly. Do NOT call any tools.
+
   For any ML coding task, use the `generate_ml_script` tool. It handles everything:
   1. Adapts the appropriate reference example to the user's requirements
   2. Runs lint_python (ruff + mypy) and auto-fixes issues
