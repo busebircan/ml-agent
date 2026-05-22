@@ -1168,6 +1168,9 @@ class Handlers:
         # Clear any stale cancellation flag from a previous run
         session.reset_cancel()
 
+        # Reset per-turn tool guards (e.g. generate_ml_script duplicate-call block)
+        session._generate_ml_script_done = False  # type: ignore[attr-defined]
+
         # If there's a pending approval and the user sent a new message,
         # abandon the pending tools so the LLM context stays valid.
         if text and session.pending_approval:

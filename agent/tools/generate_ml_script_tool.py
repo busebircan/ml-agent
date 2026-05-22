@@ -202,6 +202,21 @@ async def generate_ml_script_handler(
     if not session:
         return "No session available.", False
 
+    # ── Duplicate-call guard (local models only) ─────────────────────────
+    # Small models (qwen3:4b) often call generate_ml_script twice despite
+    # instructions. Track successful calls on the session object and block
+    # the second call immediately so the model moves on to `write`.
+    _is_local_model = getattr(session, "config", None) and \
+        session.config.model_name.startswith("ollama/")
+    if _is_local_model:
+        _already_ran = getattr(session, "_generate_ml_script_done", False)
+        if _already_ran:
+            return (
+                "[generate_ml_script BLOCKED — already ran this turn]\n"
+                "The script was already generated. Do NOT call generate_ml_script again.\n"
+                "Call the `write` tool to save the script that was already returned."
+            ), False
+
     # ── Unique agent id for UI status lines ─────────────────────────────
     if tool_call_id:
         _agent_id = tool_call_id
@@ -378,6 +393,9 @@ async def generate_ml_script_handler(
         f"```python\n{script}\n```\n\n"
         f"---\n{lint_report}\n\n{review_report}"
     )
+    # Mark as done on session so the duplicate-call guard blocks re-runs
+    if _is_local_model and session is not None:
+        session._generate_ml_script_done = True  # type: ignore[attr-defined]
     return output, True
 
 
