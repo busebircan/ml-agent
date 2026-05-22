@@ -361,9 +361,14 @@ async def event_listener(
             elif event.event_type == "assistant_stream_end":
                 shimmer.stop()
                 if event.data and event.data.get("discard"):
-                    stream_buf.discard()  # tool call was parsed from streamed text — don't render the raw JSON
+                    stream_buf.discard()  # tool call parsed from content — discard any buffered raw JSON
                 else:
-                    await stream_buf.finish(cancel_event=_cancel_event())
+                    # For Ollama: chunks were suppressed; content is bundled in the event.
+                    ollama_content = event.data.get("content") if event.data else None
+                    if ollama_content:
+                        await print_markdown(ollama_content, cancel_event=_cancel_event())
+                    else:
+                        await stream_buf.finish(cancel_event=_cancel_event())
             elif event.event_type == "tool_call":
                 shimmer.stop()
                 stream_buf.discard()
@@ -1306,7 +1311,11 @@ async def headless_main(
             if event.data and event.data.get("discard"):
                 stream_buf.discard()
             else:
-                await stream_buf.finish(instant=True)
+                ollama_content = event.data.get("content") if event.data else None
+                if ollama_content:
+                    await print_markdown(ollama_content, instant=True)
+                else:
+                    await stream_buf.finish(instant=True)
         elif event.event_type == "assistant_message":
             content = event.data.get("content", "") if event.data else ""
             if content:

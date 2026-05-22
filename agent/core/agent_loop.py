@@ -729,12 +729,16 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
     response = None
     _healed_effort = False  # one-shot safety net per call
     _healed_thinking_signature = False
+    # Ollama models return tool calls as plain text JSON — we can't tell
+    # text from tool calls until the full response is assembled. Suppress
+    # chunk events for Ollama so raw JSON never leaks to the UI before
+    # we know it's a tool call. The shimmer animation keeps the UI alive.
+    _is_ollama = llm_params.get("model", "").startswith("ollama/")
     messages, tools = with_prompt_caching(messages, tools, llm_params.get("model"))
     messages = _sanitize_messages(messages, llm_params.get("model", ""))
     t_start = time.monotonic()
     for _llm_attempt in range(_MAX_LLM_RETRIES):
         try:
-            _is_ollama = llm_params.get("model", "").startswith("ollama/")
             response = await acompletion(
                 messages=messages,
                 tools=tools,
@@ -836,9 +840,13 @@ async def _call_llm_streaming(session: Session, messages, tools, llm_params) -> 
             if not raw:
                 continue
             full_content += raw
-            await session.send_event(
-                Event(event_type="assistant_chunk", data={"content": raw})
-            )
+            # Ollama models may return tool calls as plain text JSON —
+            # suppress chunk events until we know it's not a tool call.
+            # Text responses are sent as assistant_message after stream end.
+            if not _is_ollama:
+                await session.send_event(
+                    Event(event_type="assistant_chunk", data={"content": raw})
+                )
 
         if delta.tool_calls:
             for tc_delta in delta.tool_calls:
@@ -1317,16 +1325,20 @@ class Handlers:
                     )
 
                 # Signal end of streaming to the frontend.
-                # If tool_calls were parsed from Ollama text content (content=None
-                # but tool_calls exist), discard the stream buffer so the raw
-                # JSON that was streamed to the UI is thrown away rather than
-                # rendered as assistant text.
+                # For Ollama: chunks were suppressed, so the stream buffer is empty.
+                # If it's a text response (no tool call), include the full content
+                # in the event so the UI can render it via print_markdown.
+                # If it's a tool call (content=None after parse), set discard=True.
                 if session.stream:
                     _tool_from_content = bool(tool_calls) and content is None
+                    _is_ollama_model = llm_params.get("model", "").startswith("ollama/")
+                    event_data: dict = {"discard": _tool_from_content}
+                    if _is_ollama_model and not _tool_from_content and content:
+                        event_data["content"] = content
                     await session.send_event(
                         Event(
                             event_type="assistant_stream_end",
-                            data={"discard": _tool_from_content},
+                            data=event_data,
                         )
                     )
 
