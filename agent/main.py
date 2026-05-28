@@ -1031,8 +1031,9 @@ async def main(model: str | None = None):
 
     notification_gateway = NotificationGateway(config.messaging)
     await notification_gateway.start()
-    # Create tool router with local mode
-    tool_router = ToolRouter(config.mcpServers, hf_token=hf_token, local_mode=True)
+    # local_mode: restrict tools + use lightweight prompt only for Ollama models
+    _local_mode = config.model_name.startswith("ollama/")
+    tool_router = ToolRouter(config.mcpServers, hf_token=hf_token, local_mode=_local_mode)
 
     # Session holder for interrupt/model/status access
     session_holder = [None]
@@ -1046,7 +1047,7 @@ async def main(model: str | None = None):
             session_holder=session_holder,
             hf_token=hf_token,
             user_id=hf_user,
-            local_mode=True,
+            local_mode=_local_mode,
             stream=True,
             notification_gateway=notification_gateway,
             notification_destinations=config.messaging.default_auto_destinations(),
@@ -1260,7 +1261,8 @@ async def headless_main(
     submission_queue: asyncio.Queue = asyncio.Queue()
     event_queue: asyncio.Queue = asyncio.Queue()
 
-    tool_router = ToolRouter(config.mcpServers, hf_token=hf_token, local_mode=True)
+    _local_mode = config.model_name.startswith("ollama/")
+    tool_router = ToolRouter(config.mcpServers, hf_token=hf_token, local_mode=_local_mode)
     session_holder: list = [None]
 
     agent_task = asyncio.create_task(
@@ -1272,7 +1274,7 @@ async def headless_main(
             session_holder=session_holder,
             hf_token=hf_token,
             user_id=hf_user,
-            local_mode=True,
+            local_mode=_local_mode,
             stream=stream,
             notification_gateway=notification_gateway,
             notification_destinations=config.messaging.default_auto_destinations(),
