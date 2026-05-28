@@ -1071,11 +1071,10 @@ async def main(model: str | None = None):
 
     submission_id = [0]
     # Mirrors codex-rs/tui/src/bottom_pane/mod.rs:137
-    # (`QUIT_SHORTCUT_TIMEOUT = Duration::from_secs(1)`). Two Ctrl+C presses
-    # within this window quit; a single press cancels the in-flight turn.
-    CTRL_C_QUIT_WINDOW = 1.0
-    # Hint string matches codex-rs/tui/src/bottom_pane/footer.rs:746
-    # (`" again to quit"` prefixed with the key binding, rendered dim).
+    # Two Ctrl+C presses within this window quit; single press cancels in-flight work.
+    # 3s on Windows: add_signal_handler is unavailable so the only path is through
+    # prompt_toolkit's KeyboardInterrupt, which has asyncio + prompt redraw overhead.
+    CTRL_C_QUIT_WINDOW = 3.0
     CTRL_C_HINT = "[dim]ctrl + c again to quit[/dim]"
     interrupt_state = {"last": 0.0, "exit": False}
 
@@ -1141,9 +1140,16 @@ async def main(model: str | None = None):
             except KeyboardInterrupt:
                 now = time.monotonic()
                 if now - interrupt_state["last"] < CTRL_C_QUIT_WINDOW:
+                    # Second press within window — quit immediately
                     break
+                # First press — show hint and loop back to a NEW prompt so the
+                # user can press Ctrl+C again to confirm quit.
+                # NOTE: do NOT set interrupt_state["last"] = 0 here; we want
+                # the window to stay open until the user types something real.
                 interrupt_state["last"] = now
                 get_console().print(CTRL_C_HINT)
+                # Re-arm the turn_complete_event so the outer loop's wait()
+                # returns immediately and drops us back to get_user_input.
                 turn_complete_event.set()
                 continue
 
