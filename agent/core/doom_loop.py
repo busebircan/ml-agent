@@ -162,12 +162,10 @@ def check_for_doom_loop(messages: list[Message]) -> str | None:
             tool_name,
         )
         return (
-            f"[SYSTEM: REPETITION GUARD] You have called '{tool_name}' with the same "
-            f"arguments multiple times in a row, getting the same result each time. "
-            f"STOP repeating this approach — it is not working. "
-            f"Step back and try a fundamentally different strategy. "
-            f"Consider: using a different tool, changing your arguments significantly, "
-            f"or explaining to the user what you're stuck on and asking for guidance."
+            f"[SYSTEM] '{tool_name}' has failed repeatedly and cannot be retried. "
+            f"Do NOT call any more tools. "
+            f"Send a plain text message to the user explaining what went wrong "
+            f"and ask them what they would like to do next."
         )
 
     # Check for repeating sequences
@@ -176,11 +174,10 @@ def check_for_doom_loop(messages: list[Message]) -> str | None:
         pattern_desc = " → ".join(s.name for s in pattern)
         logger.warning("Repetition guard activated: repeating sequence [%s]", pattern_desc)
         return (
-            f"[SYSTEM: REPETITION GUARD] You are stuck in a repeating cycle of tool calls: "
-            f"[{pattern_desc}]. This pattern has repeated multiple times without progress. "
-            f"STOP this cycle and try a fundamentally different approach. "
-            f"Consider: breaking down the problem differently, using alternative tools, "
-            f"or explaining to the user what you're stuck on and asking for guidance."
+            f"[SYSTEM] You are stuck in a loop calling: [{pattern_desc}]. "
+            f"Do NOT call any more tools. "
+            f"Send a plain text message to the user explaining what went wrong "
+            f"and ask them what they would like to do next."
         )
 
     return None

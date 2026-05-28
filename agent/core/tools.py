@@ -3,6 +3,7 @@ Tool system for the agent
 Provides ToolSpec and ToolRouter for managing both built-in and MCP tools
 """
 
+import asyncio
 import logging
 import warnings
 from dataclasses import dataclass
@@ -294,9 +295,17 @@ class ToolRouter:
         # Otherwise, use MCP client
         if self._mcp_initialized:
             try:
-                result = await self.mcp_client.call_tool(tool_name, arguments)
+                result = await asyncio.wait_for(
+                    self.mcp_client.call_tool(tool_name, arguments),
+                    timeout=15.0,  # prevent hallucinated tool names from hanging
+                )
                 output = convert_mcp_content_to_string(result.content)
                 return output, not result.is_error
+            except asyncio.TimeoutError:
+                return (
+                    f"Tool '{tool_name}' timed out. "
+                    f"This tool may not exist. Available tools: {available_str}"
+                ), False
             except ToolError as e:
                 error_msg = (
                     f"Tool '{tool_name}' is not available. {e}\n"

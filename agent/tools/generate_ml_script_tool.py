@@ -211,11 +211,13 @@ async def generate_ml_script_handler(
     if _is_local_model:
         _already_ran = getattr(session, "_generate_ml_script_done", False)
         if _already_ran:
+            # Return True so the agent treats this as success and stops retrying.
+            # False would make the agent doom-loop on the "failed" tool call.
             return (
-                "[generate_ml_script BLOCKED — already ran this turn]\n"
-                "The script was already generated. Do NOT call generate_ml_script again.\n"
-                "Call the `write` tool to save the script that was already returned."
-            ), False
+                "[generate_ml_script ALREADY DONE]\n"
+                "The script was already generated this turn. Do not call this tool again.\n"
+                "Your next action: call the `write` tool to save the script to disk."
+            ), True
 
     # ── Unique agent id for UI status lines ─────────────────────────────
     if tool_call_id:
@@ -293,11 +295,11 @@ async def generate_ml_script_handler(
         getattr(session, "hf_token", None),
     )
 
-    # Local models: cap at 120s + 1200 output tokens so the 4B model always
-    # finishes within time on 4 GB VRAM (~10-15 tok/s → ~80-120s for 1200 tok).
-    # Cloud models: 180s, no token cap (large models generate fast).
-    _gen_timeout = 120 if _is_local else 180
-    _max_tokens = 1200 if _is_local else None
+    # Local models: cap at 90s + 800 tokens. At ~10 tok/s on 4 GB VRAM that's
+    # ~80s — well inside the window. 1200 tokens was hitting the 120s ceiling
+    # exactly, causing reliable timeouts. Cloud models: 180s, no cap.
+    _gen_timeout = 90 if _is_local else 180
+    _max_tokens = 800 if _is_local else None
 
     if not _is_local:
         await _log("Generating script...")
