@@ -18,56 +18,28 @@ from agent.core.prompt_caching import with_prompt_caching
 
 logger = logging.getLogger(__name__)
 
-_HF_WHOAMI_URL = "https://huggingface.co/api/whoami-v2"
-_HF_WHOAMI_TIMEOUT = 5  # seconds
-
-
 def _get_hf_username(hf_token: str | None = None) -> str:
     """Return the HF username for the given token.
 
-    Uses subprocess + curl to avoid Python HTTP client IPv6 issues that
-    cause 40+ second hangs (httpx/urllib try IPv6 first which times out
-    at OS level before falling back to IPv4 — the "Happy Eyeballs" problem).
+    Uses huggingface_hub directly — avoids the curl subprocess which can
+    time out on networks where Python's httpx works fine.
+    Falls back to "unknown" silently so startup is never blocked.
     """
-    import json
-    import subprocess
     import time as _t
 
     if not hf_token:
-        logger.warning("No hf_token provided, using 'unknown' as username")
         return "unknown"
 
     t0 = _t.monotonic()
     try:
-        result = subprocess.run(
-            [
-                "curl",
-                "-s",
-                "-4",  # force IPv4
-                "-m",
-                str(_HF_WHOAMI_TIMEOUT),  # max time
-                "-H",
-                f"Authorization: Bearer {hf_token}",
-                _HF_WHOAMI_URL,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=_HF_WHOAMI_TIMEOUT + 2,
-        )
-        t1 = _t.monotonic()
-        if result.returncode == 0 and result.stdout:
-            data = json.loads(result.stdout)
-            username = data.get("name", "unknown")
-            logger.info(f"HF username resolved to '{username}' in {t1 - t0:.2f}s")
-            return username
-        else:
-            logger.warning(
-                f"curl whoami failed (rc={result.returncode}) in {t1 - t0:.2f}s"
-            )
-            return "unknown"
-    except Exception as e:
-        t1 = _t.monotonic()
-        logger.warning(f"HF whoami failed in {t1 - t0:.2f}s: {e}")
+        from huggingface_hub import HfApi
+        data = HfApi(token=hf_token).whoami()
+        username = data.get("name", "unknown") if isinstance(data, dict) else "unknown"
+        logger.debug(f"HF username resolved to '{username}' in {_t.monotonic() - t0:.2f}s")
+        return username
+    except Exception:
+        # No internet, bad token, or HF API down — not critical for local use
+        logger.debug("HF whoami unavailable; using 'unknown'")
         return "unknown"
 
 
