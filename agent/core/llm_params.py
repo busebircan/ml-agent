@@ -141,16 +141,24 @@ def _resolve_llm_params(
         # Local Ollama instance — no API key needed.
         # api_base must be explicit: some litellm versions don't auto-route
         # ollama/ when tool_choice or stream_options are present.
-        # num_ctx: 8192 is the sweet spot for qwen3:4b on a 4GB VRAM GPU.
-        # Pre-allocated KV cache at 8192: ~1.2 GB. Model weights: ~2.5 GB.
-        # Total ~3.7 GB — leaves headroom in 4 GB VRAM for activations.
-        # 16384 would require ~2.4 GB KV cache + 2.5 GB weights = 4.9 GB,
-        # which spills to CPU and causes multi-minute hangs or timeouts.
+        #
+        # num_ctx 4096: halves KV cache vs 8192 (~200-400MB on GPU vs ~400-800MB).
+        # Critical for hybrid T550 offload — keeps VRAM headroom for 18+ layers.
+        # 4096 gives ~2200 tokens of headroom after the ~1800-token system+tool prompt.
+        #
+        # temperature 0.1: single biggest fix for tool-call reliability. Default 0.8
+        # causes hallucinated tool names and malformed JSON arguments. Bake it in here
+        # rather than relying on the model Modelfile so it applies everywhere.
+        #
         # think: false — qwen3 models default to extended thinking mode which adds
-        # silent multi-minute pauses before every tool call on a 4B model. Disable it
-        # so the model goes straight to generating the response/tool call.
+        # silent multi-minute pauses before every tool call. Disable for qwen3 only;
+        # qwen2.5-coder and llama3.1 do not have this issue.
         is_qwen3 = "qwen3" in model_name.lower()
-        extra_body: dict = {"options": {"num_ctx": 8192}}
+        options: dict = {
+            "num_ctx": 4096,
+            "temperature": 0.1,
+        }
+        extra_body: dict = {"options": options}
         if is_qwen3:
             extra_body["think"] = False
         return {

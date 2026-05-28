@@ -295,9 +295,11 @@ async def generate_ml_script_handler(
         getattr(session, "hf_token", None),
     )
 
-    # Local models: cap at 90s + 800 tokens. At ~10 tok/s on 4 GB VRAM that's
-    # ~80s — well inside the window. 1200 tokens was hitting the 120s ceiling
-    # exactly, causing reliable timeouts. Cloud models: 180s, no cap.
+    # Local models: 90s timeout + 800 token cap.
+    # With num_ctx=4096, the generation sub-call has ~2000 tokens of headroom
+    # (4096 - ~1800 system+task prompt = ~2200). 800 output tokens fits comfortably.
+    # At ~10 tok/s pure CPU or ~18 tok/s hybrid GPU that's 45-80s — inside the window.
+    # Cloud models: 180s, no cap.
     _gen_timeout = 90 if _is_local else 180
     _max_tokens = 800 if _is_local else None
 
