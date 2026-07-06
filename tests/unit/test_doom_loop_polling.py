@@ -66,7 +66,7 @@ def test_truly_stuck_polling_with_identical_results_still_fires():
     ]
     prompt = check_for_doom_loop(msgs)
     assert prompt is not None
-    assert "REPETITION GUARD" in prompt
+    assert "Do NOT call any more tools" in prompt
     assert "bash" in prompt
 
 
@@ -80,7 +80,7 @@ def test_identical_calls_with_no_results_yet_still_fires():
     ]
     prompt = check_for_doom_loop(msgs)
     assert prompt is not None
-    assert "REPETITION GUARD" in prompt
+    assert "Do NOT call any more tools" in prompt
     assert "write" in prompt
 
 

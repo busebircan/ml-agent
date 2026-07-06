@@ -207,7 +207,7 @@ def test_check_for_doom_loop_returns_corrective_prompt_for_identical_run():
     msgs = [_assistant_call("read", '{"p": 1}')] * 3
     out = check_for_doom_loop(msgs)
     assert out is not None
-    assert "DOOM LOOP DETECTED" in out
+    assert "Do NOT call any more tools" in out
     assert "'read'" in out
 
 
@@ -218,7 +218,7 @@ def test_check_for_doom_loop_returns_corrective_prompt_for_cycle():
         msgs.append(_assistant_call("b", "{}"))
     out = check_for_doom_loop(msgs)
     assert out is not None
-    assert "DOOM LOOP DETECTED" in out
+    assert "Do NOT call any more tools" in out
     assert "a → b" in out
 
 

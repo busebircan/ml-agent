@@ -58,6 +58,10 @@ from agent.tools.generate_ml_script_tool import (
     GENERATE_ML_SCRIPT_TOOL_SPEC,
     generate_ml_script_handler,
 )
+from agent.tools.scaffold_project_tool import (
+    SCAFFOLD_PROJECT_TOOL_SPEC,
+    scaffold_project_handler,
+)
 
 # NOTE: Private HF repo tool disabled - replaced by hf_repo_files and hf_repo_git
 # from agent.tools.private_hf_repo_tools import (
@@ -206,7 +210,8 @@ class ToolRouter:
     # inside the 8192 num_ctx window without crowding out conversation history.
     # All 23 tools would consume ~7,000+ tokens, leaving no room for responses.
     _LOCAL_CORE_TOOLS = {
-        "generate_ml_script",  # primary ML coding tool
+        "generate_ml_script",  # primary ML coding tool (single scripts)
+        "scaffold_project",    # full MLOps project skeleton (deterministic)
         "write",               # save generated scripts to disk
         "read",                # read existing files
         "edit",                # edit files
@@ -334,6 +339,13 @@ def create_builtin_tools(local_mode: bool = False) -> list[ToolSpec]:
             description=GENERATE_ML_SCRIPT_TOOL_SPEC["description"],
             parameters=GENERATE_ML_SCRIPT_TOOL_SPEC["parameters"],
             handler=generate_ml_script_handler,
+        ),
+        # Deterministic MLOps project scaffold — full-project tasks (no LLM inside)
+        ToolSpec(
+            name=SCAFFOLD_PROJECT_TOOL_SPEC["name"],
+            description=SCAFFOLD_PROJECT_TOOL_SPEC["description"],
+            parameters=SCAFFOLD_PROJECT_TOOL_SPEC["parameters"],
+            handler=scaffold_project_handler,
         ),
         # Research sub-agent (delegates to read-only tools in independent context)
         ToolSpec(

@@ -17,7 +17,7 @@ from backend.session_manager import AgentSession, SessionManager
 
 
 class DummyToolRouter:
-    def get_tool_specs_for_llm(self) -> list[dict]:
+    def get_tool_specs_for_llm(self, local_mode: bool = False) -> list[dict]:
         return []
 
 

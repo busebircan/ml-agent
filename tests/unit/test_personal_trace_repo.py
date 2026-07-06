@@ -5,7 +5,7 @@ from agent.core.session import Session
 
 
 class DummyToolRouter:
-    def get_tool_specs_for_llm(self) -> list[dict]:
+    def get_tool_specs_for_llm(self, local_mode: bool = False) -> list[dict]:
         return []
 
 
