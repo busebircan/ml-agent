@@ -57,7 +57,7 @@ GITHUB_TOKEN=<your-github-token>       # optional, for GitHub code search tool
 Run:
 
 ```bash
-ml-intern
+uv run ml-agent
 ```
 
 The agent starts with `Qwen/Qwen2.5-Coder-32B-Instruct` via HF Router by default. No Ollama required for the default setup.
@@ -76,7 +76,7 @@ ollama pull qwen2.5-coder:7b-instruct
 ollama create ml-agent -f Modelfile.qwen25coder
 
 # Switch to it
-ml-intern --model ollama/ml-agent
+uv run ml-agent --model ollama/ml-agent
 # or set "model_name": "ollama/ml-agent" in configs/cli_agent_config.json
 ```
 
