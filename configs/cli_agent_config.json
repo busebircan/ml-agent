@@ -1,5 +1,5 @@
 {
-  "model_name": "Qwen/Qwen2.5-Coder-32B-Instruct",
+  "model_name": "ollama/ml-agent",
   "save_sessions": true,
   "session_dataset_repo": "smolagents/ml-intern-sessions",
   "share_traces": true,
