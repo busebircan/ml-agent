@@ -16,8 +16,9 @@
 #   num_thread 10  — physical cores minus 2 for the CPU layers. Adjust for your CPU.
 #                    For 12 physical cores: 10. For 8 physical cores: 6.
 #   num_batch 256  — prompt processing batch size. Higher = faster prefill.
-#   mmap 0         — disable memory mapping; loads full model into RAM for fastest
-#                    steady-state generation. Only use if you have ≥12GB free RAM.
+#
+# Note: "mmap" is not a valid Modelfile parameter in current Ollama versions
+# (API-only option) — `ollama create` rejects it. Do not add it here.
 
 FROM qwen2.5-coder:7b-instruct
 
@@ -26,4 +27,3 @@ PARAMETER num_thread 10
 PARAMETER num_ctx 4096
 PARAMETER temperature 0.1
 PARAMETER num_batch 256
-PARAMETER mmap 0
